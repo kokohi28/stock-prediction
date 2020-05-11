@@ -1,6 +1,6 @@
 import os
 import const as CONST
-import datetime
+from datetime import datetime
 
 # Const
 MENU_ROOT = 0
@@ -25,7 +25,7 @@ def welcomeMessage():
 
 def validateDate(date_text):
   try:
-    datetime.datetime.strptime(date_text, '%Y/%m/%d')
+    datetime.strptime(date_text, '%Y/%m/%d')
     return True
   except ValueError:
     return False
@@ -38,7 +38,7 @@ def menuSpecifyPercentTrained():
 
 def menuSpecifyDate():
   print('\nEnter period of stock, start date - end date :')
-  print('example : 2012/01/01-2019/12/17')
+  print('example : 2010/01/05-2015/01/05')
   print('')
   print('Press [B] for Back')
   return
