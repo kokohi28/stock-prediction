@@ -1,31 +1,43 @@
+# Common
 import const as CONST
 import menu
 import math
 import re
+from os import path
+from datetime import datetime
+
+# Data Fetcher
 import pandas_datareader as web
-import numpy as np
 import pandas as pd
-# import sklearn
+
+# Numerical
+import numpy as np
+
+# Scaler
 from sklearn.preprocessing import MinMaxScaler
-# import keras
+
+# Model, LSTM
 from keras.models import Sequential
 from keras.layers import Dense, LSTM
+
+# Graph plot
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Button
-import datetime
-from datetime import datetime
-from os import path
 
+# Stock server source
 SOURCE = 'yahoo'
-FIELD = 'Close'
 
-ADJUST_LOC = 3
+# Field used
+FIELD_CLOSE = 'Close'
+FIELD_DATE = 'Date'
+
+# Wide of trained sample
 SAMPLE_TRAINED = 60
 
-# 60 Days
-NEXT_SIZE = 60 * 24 * 60 * 60 * 1000
+# 30 Days
+NEXT_PREDICTION = 30 * 24 * 60 * 60 * 1000
 
-
+# Get dataframe from CSV if exist, from server when not available
 def getDataFrame(stock, dateRange):
   # Format date
   dateStart = datetime.strptime(dateRange[0], '%Y/%m/%d')
@@ -33,6 +45,7 @@ def getDataFrame(stock, dateRange):
   dateStartStr = dateRange[0].replace('/', '-')
   dateEndStr = dateRange[1].replace('/', '-')
 
+  # Remove any non alpha-numeric char
   safeStockName = re.sub(r'\W+', '', stock)
 
   # Prepare data frame
@@ -55,16 +68,16 @@ def getDataFrame(stock, dateRange):
   
     # Read and parse as time series
     dateParse = lambda x: datetime.strptime(x, "%Y-%m-%d")
-    df = pd.read_csv('{}.csv'.format(safeStockName), header='infer', parse_dates=['Date'], date_parser=dateParse)
-    df.sort_values(by='Date')
+    df = pd.read_csv('{}.csv'.format(safeStockName), header='infer', parse_dates=[FIELD_DATE], date_parser=dateParse)
+    df.sort_values(by=FIELD_DATE)
   
     # Get minimum timestamp of CSV data
-    dtMin = df.loc[df.index.min(), 'Date']
+    dtMin = df.loc[df.index.min(), FIELD_DATE]
     dateMin = int(dtMin.date().strftime('%s'))
     dateMin = dateMin * 1000
 
     # Get maximum timestamp of CSV data
-    dtMax = df.loc[df.index.max(), 'Date']
+    dtMax = df.loc[df.index.max(), FIELD_DATE]
     dateMax = int(dtMax.date().strftime('%s'))
     dateMax = dateMax * 1000
 
@@ -103,7 +116,7 @@ def getDataFrame(stock, dateRange):
       df.to_csv('{}.csv'.format(safeStockName))
 
     # Create mask/filter
-    mask = (df['Date'] > dateStartStr) & (df['Date'] <= dateEndStr)
+    mask = (df[FIELD_DATE] > dateStartStr) & (df[FIELD_DATE] <= dateEndStr)
 
     # Return mask and origin
     return (df.loc[mask], df)
@@ -117,7 +130,7 @@ if __name__ == '__main__':
 
   # CONST.DEBUG = True
   if CONST.DEBUG:
-    stock = 'AAPL'
+    stock = '^GSPC'
     dateRange = ['2010/01/05', '2015/01/05']
     percent = 80
   else:
@@ -158,14 +171,14 @@ if __name__ == '__main__':
   # print('\nUsing dataframe:')
   # print(df)
 
-  # Stock name
+  # Stock name, remove any non alpha-numeric char
   safeStockName = re.sub(r'\W+', '', stock)
 
   # Check Data Frame shape
   print('Data shape: ' + str(df.shape))
 
   # prepare dataset and use only Close price value
-  dataset = df.filter([FIELD]).values
+  dataset = df.filter([FIELD_CLOSE]).values
 
   # Create len of percentage training set
   trainingDataLen = math.ceil((len(dataset) * percent) / 100)
@@ -235,8 +248,8 @@ if __name__ == '__main__':
   print('\nRoot mean square (RMSE):' + str(rmse))
 
   # Add prediction for Plot
-  train = df.loc[:trainingDataLen, ['Date', FIELD] ]
-  valid = df.loc[trainingDataLen:, ['Date', FIELD] ]
+  train = df.loc[:trainingDataLen, [FIELD_DATE, FIELD_CLOSE] ]
+  valid = df.loc[trainingDataLen:, [FIELD_DATE, FIELD_CLOSE] ]
   print('validLength: {}, predictionLength: {}'.format(len(valid), len(predictions)))
 
   # Create dataframe prediction
@@ -253,49 +266,106 @@ if __name__ == '__main__':
   fig, ax = plt.subplots(num='{} Prediction Price'.format(safeStockName))
   plt.subplots_adjust(bottom=0.2)
 
+  # Button Predict event
   def next(event):
-    global df
+    # Export global var
+    global dfOrigin
     global endTs
     global plt
     global ax
+    global scaler
+    global model
 
     # Add next data
-    endTs = endTs + NEXT_SIZE
+    endTs = endTs + NEXT_PREDICTION
     dateNextEnd = datetime.fromtimestamp(endTs / 1000)
-    print("Next Data until: " + dateNextEnd.strftime("%Y-%m-%d"))
+    print("\nNext Data until: " + dateNextEnd.strftime("%Y-%m-%d"))
 
     # Create mask/filter
-    mask = (dfOrigin['Date'] > dateStartStr) & (dfOrigin['Date'] <= dateNextEnd.strftime("%Y-%m-%d"))
+    mask = (dfOrigin[FIELD_DATE] > dateStartStr) & (dfOrigin[FIELD_DATE] <= dateNextEnd.strftime("%Y-%m-%d"))
     dfNew = dfOrigin.loc[mask]
 
-    # Clear graph
-    # ax.clear()
+    # Prediction for new data 
+    trainNew = dfNew.loc[:trainingDataLen, [FIELD_DATE, FIELD_CLOSE] ]
+    validNew = dfNew.loc[trainingDataLen:, [FIELD_DATE, FIELD_CLOSE] ]
 
-    # Re-plot
-    # ax.set_title('{} Prediction Price'.format(safeStockName))
-    # ax.set_xlabel('Date', fontsize=14)
-    # ax.set_ylabel('Close Price USD ($)', fontsize=14)
-    # ax.grid(linestyle='-', linewidth='0.5', color='gray')
-    # ax.plot(dfNew['Date'], dfNew['Close'])
-    # ax.draw(renderer=None, inframe=False)
-    # plt.pause(0.0001)
+    # prepare dataset and use only Close price value
+    datasetNew = dfNew.filter([FIELD_CLOSE]).values
+
+    # Prepare testing dataset
+    scaledNewData = scaler.fit_transform(datasetNew)
+    testDataNew = scaledNewData[trainingDataLen - SAMPLE_TRAINED: , :]
+
+    # Create dataset test x and y
+    xTestNew = []
+    yTestNew = datasetNew[trainingDataLen: , :]
+    for i in range(SAMPLE_TRAINED, len(testDataNew)):
+      xTestNew.append(testDataNew[i - SAMPLE_TRAINED:i, 0])
+
+    # Convert test set as numpy array
+    xTestNew = np.array(xTestNew)
+
+    # Reshape test set as 3 dimension array
+    xTestNew = np.reshape(xTestNew, (xTestNew.shape[0], xTestNew.shape[1], 1))
+
+    # Models predict price values
+    predictionsNew = model.predict(xTestNew)
+    predictionsNew = scaler.inverse_transform(predictionsNew)
+
+    # Get root mean square (RMSE)
+    rmseNew = np.sqrt(np.mean(predictionsNew - yTestNew) ** 2)
+    print('Root mean square (RMSE) - New:' + str(rmseNew))
+
+    # Create dataframe prediction
+    dfPredictionNew = pd.DataFrame(predictionsNew, columns = ['predictions'])
+
+    # Reset the index  
+    validNew = validNew.reset_index()
+    dfPredictionNew = dfPredictionNew.reset_index()
+
+    # Merge valid data and prediction data
+    validNew = pd.concat([validNew, dfPredictionNew], axis=1)
+
+    # Clear graph
+    ax.clear()
+
+    # Re-plot, add graph info
+    ax.set_title('With RMSE: ' + str(rmseNew))
+    ax.set_xlabel('Date', fontsize=14)
+    ax.set_ylabel('Close Price USD ($)', fontsize=14)
+    ax.grid(linestyle='-', linewidth='0.5', color='gray')
+
+    # plot trained data
+    ax.plot(trainNew[FIELD_DATE], trainNew[FIELD_CLOSE])
+
+    # plot actual and predictions
+    ax.plot(validNew[FIELD_DATE], validNew[[FIELD_CLOSE, 'predictions']])
+
+    # add legend
+    ax.legend(['Train', 'Actual', 'Prediction'], loc='lower right')
+
+    # Plot
+    ax.draw(renderer=None, inframe=False)
+    plt.pause(0.0001)
 
     return
 
+  # Create button Predict
   axnext = plt.axes([0.81, 0.05, 0.1, 0.075])
   bnext = Button(axnext, 'PREDICT')
   bnext.on_clicked(next)
 
+  # Add graph info
   ax.set_title('With RMSE: ' + str(rmse))
   ax.set_xlabel('Date', fontsize=14)
   ax.set_ylabel('Close Price USD ($)', fontsize=14)
   ax.grid(linestyle='-', linewidth='0.5', color='gray')
   
   # plot trained data
-  ax.plot(train['Date'], train[FIELD])
+  ax.plot(train[FIELD_DATE], train[FIELD_CLOSE])
 
   # plot actual and predictions
-  ax.plot(valid['Date'], valid[[FIELD, 'predictions']])
+  ax.plot(valid[FIELD_DATE], valid[[FIELD_CLOSE, 'predictions']])
 
   # add legend
   ax.legend(['Train', 'Actual', 'Prediction'], loc='lower right')
