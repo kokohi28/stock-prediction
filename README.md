@@ -12,11 +12,9 @@ This project using data from yahoo finance, and implemented to predict Close Pri
 - Hang Seng Index (^HSI)
 - S&P 500 (^GSPC)
 
-##
-Preview
-
+## Preview
+S&P 500 stock prediction
 ![S&P 500 stock prediction](https://github.com/kokohi28/stock-prediction/blob/master/GSPC_sample.png?raw=true)
-
 
 ## Requirements
 * Python 3.7
