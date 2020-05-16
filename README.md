@@ -21,7 +21,7 @@ S&P 500 stock prediction
 
 ## Requirements Library
 * numpy ->
-  $ pip install pip install numpy
+  $ pip install numpy
 
 * pandas ->
   $ pip install pandas
